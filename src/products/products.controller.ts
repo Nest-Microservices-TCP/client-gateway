@@ -13,7 +13,7 @@ import {
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { catchError } from 'rxjs';
 import { PaginationDto } from 'src/common';
-import { PRODUCTS_SERVICE } from 'src/config';
+import { NATS_SERVICE } from 'src/config';
 import { CreateProductDto, UpdateProductDto } from './dto';
 
 @Controller('products')
@@ -26,18 +26,22 @@ export class ProductsController {
      *
      * En este caso el tipado del microservicio es ClientProxy por ser TCP
      */
-    @Inject(PRODUCTS_SERVICE) private readonly productsClient: ClientProxy,
+    /**
+     * Ahora, con el cambio de TCP al broker NATS, se podría decir que el cliente
+     * es el mismo para todos, por ende podemos generalizar el nombre del servicio
+     * como 'client', asi como el token ahora es el NATS_SERVICE
+     */
+    // @Inject(PRODUCTS_SERVICE) private readonly productsClient: ClientProxy,
+    @Inject(NATS_SERVICE) private readonly client: ClientProxy,
   ) {}
 
   @Post()
   async createProduct(@Body() createProductDto: CreateProductDto) {
-    return this.productsClient
-      .send({ cmd: 'create_product' }, createProductDto)
-      .pipe(
-        catchError((err) => {
-          throw new RpcException(err);
-        }),
-      );
+    return this.client.send({ cmd: 'create_product' }, createProductDto).pipe(
+      catchError((err) => {
+        throw new RpcException(err);
+      }),
+    );
   }
 
   /**
@@ -61,13 +65,11 @@ export class ProductsController {
      * * {}
      * Es el payload que puede ser enviado en la petición
      */
-    return this.productsClient
-      .send({ cmd: 'findAll_products' }, paginationDto)
-      .pipe(
-        catchError((err) => {
-          throw new RpcException(err);
-        }),
-      );
+    return this.client.send({ cmd: 'findAll_products' }, paginationDto).pipe(
+      catchError((err) => {
+        throw new RpcException(err);
+      }),
+    );
   }
 
   @Get(':id')
@@ -76,7 +78,7 @@ export class ProductsController {
      * Cualquiera de estas dos formas funciona para propagar el error usando
      * nuestro exception filter personalizado, la decision depende de gustos
      */
-    return this.productsClient.send({ cmd: 'findOne_product' }, { id }).pipe(
+    return this.client.send({ cmd: 'findOne_product' }, { id }).pipe(
       catchError((err) => {
         throw new RpcException(err);
       }),
@@ -100,7 +102,7 @@ export class ProductsController {
 
   @Delete(':id')
   async deleteOne(@Param('id') id: number) {
-    return this.productsClient.send({ cmd: 'deleteOne_product' }, { id }).pipe(
+    return this.client.send({ cmd: 'deleteOne_product' }, { id }).pipe(
       catchError((err) => {
         throw new RpcException(err);
       }),
@@ -112,7 +114,7 @@ export class ProductsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProductDto: UpdateProductDto,
   ) {
-    return this.productsClient
+    return this.client
       .send({ cmd: 'updateOne_product' }, { id, ...updateProductDto })
       .pipe(
         catchError((err) => {
