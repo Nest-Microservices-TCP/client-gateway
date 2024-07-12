@@ -1,0 +1,75 @@
+# Podemos definir la construccion de una imagen
+# de docker en diferentes etapas. Para esto
+# podemos usar la instruccion FROM pero
+# renombrandola para cada etapa
+
+#! 1. Dependencias
+FROM node:21-alpine3.19 AS deps
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+RUN npm install
+
+
+#! 2. Builder - Construye la aplicacion
+FROM node:21-alpine3.19 AS build
+
+WORKDIR /usr/src/app
+
+# 2.1 Copiar de deps, los modulos de node
+# En el from se define el stage de donde se toman
+# los archivos, la primer ruta es la del WORKDIR
+# del stag que estamos indicando asi como el nombre
+# de lo que deseamos copiar, la segunda ruta es la
+# del stage actual
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+
+# 2.2 Copiar todo el codigo fuente de la app
+COPY . .
+
+# En un entorno de produccion solo necesitamos
+# generar la carpeta de distribucion de la
+# aplicacion, la cual, practicamente solo
+# requiere de Node para se ejecutada
+
+# RUN npm run test
+# Es por eso que para este caso el comando que
+# se ejecuta es el del build, para generar
+# la carpeta de distribucion (dist/)
+RUN npm run build
+
+# Este comando instala solo las dependencias que no se
+# marcaron como 'de desarrollo(-D)', esto hace menos
+# pesada la imagen final
+RUN npm ci -f --only=production && npm cache clean --force
+
+
+#! 3. Crear la imagen final
+FROM node:21-alpine3.19 AS prod
+
+WORKDIR /usr/src/app
+
+COPY --from=build /usr/src/app/node_modules ./node_modules
+
+# Copiar la carpeta de distribucion generada en el stage
+# de build
+COPY --from=build /usr/src/app/dist ./dist
+
+ENV NODE_ENV=production
+
+# Esta instruccion crea un usuario y los comandos posteriores
+# se ejecutan con este usuario. Esto es conveniente porque
+# la imagen de alpine tiene un usuario que tiene demasiados
+# privilegios
+USER node
+
+EXPOSE 3000
+
+# En este apartado de comandos son aquellos que 
+# se ejecutan una vez ha sido montada la imagen
+# construida en los pasos anteriores, aqui cada
+# parametro del comando se separa en comillas
+# dentro del arreglo
+CMD [ "node", "dist/main.js" ]
